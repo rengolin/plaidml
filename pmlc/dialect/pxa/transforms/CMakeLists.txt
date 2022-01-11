@@ -16,6 +16,7 @@
     localize.cc
     nest_loops.cc
     normalize.cc
+    reorder_loops.cc
     resize_tmps.cc
     simplify_arithmetic.cc
     stencil_gemm.cc

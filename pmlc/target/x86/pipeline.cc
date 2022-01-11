@@ -335,6 +335,8 @@ void pipelineBuilderStage2(OpPassManager &pm, const Options &options) {
   pm.addNestedPass<FuncOp>(createStencilTppUnaryPass());
   pm.addNestedPass<FuncOp>(createStencilTppBinaryPass());
 
+  pm.addNestedPass<FuncOp>(pxa::createReorderLoopsPass());
+
   if (pmlc::util::getEnvVar("PLAIDML_PROFILE") == "1")
     pm.addPass(createProfileKernelsPass());
   pm.addPass(createCanonicalizerPass());
