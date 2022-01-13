@@ -55,16 +55,15 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
           return attr.cast<AtomicRMWKindAttr>().getValue();
         }));
     auto ranges = *op.getConstantRanges();
-    SmallVector<AtomicRMWKind, 4> newReductions;
     SmallVector<int64_t, 4> newRanges;
     for (unsigned pos : argOrder) {
-      newReductions.emplace_back(reductions[pos]);
       newRanges.emplace_back(ranges[pos]);
     }
 
     OpBuilder builder(op->getParentOp());
+    builder.setInsertionPoint(op);
     auto newOp = builder.create<AffineParallelOp>(
-        op.getLoc(), op.getResultTypes(), newReductions, newRanges);
+        op.getLoc(), op.getResultTypes(), reductions, newRanges);
     auto &destOps = newOp.getBody()->getOperations();
     destOps.splice(destOps.begin(), op.getBody()->getOperations());
     auto origArgs = op.getIVs();
@@ -73,6 +72,7 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
       origArgs[pos].replaceAllUsesWith(newArg);
     }
     op.replaceAllUsesWith(newOp);
+    op.erase();
   }
 
 private:
