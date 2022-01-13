@@ -136,6 +136,9 @@ def NestLoops : FunctionPass<"pxa-nest-loops"> {
 def ReorderLoops : FunctionPass<"pxa-reorder-loops"> {
   let summary = "Reorder parallel loop indexes to improve performance";
   let constructor = "pmlc::dialect::pxa::createReorderLoopsPass()";
+  let options = [
+    Option<"cacheLine", "cache-line", "unsigned", /*default=*/"64", "Cache line size.">
+  ];
 }
 
 def ResizeTmps : FunctionPass<"pxa-resize-tmps"> {

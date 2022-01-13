@@ -19,19 +19,70 @@ namespace pmlc::dialect::pxa {
 
 namespace {
 
-struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
-  void runOnFunction() final {
-    auto func = getFunction();
-    func.walk([&](AffineParallelOp op) { runOnAffineParallel(op); });
+class LoopOrderModel final {
+public:
+  void setCacheLine(unsigned size) { cacheLine = size; }
+
+  SmallVector<unsigned, 4> evaluate(AffineParallelOp op) {
+    SmallVector<unsigned, 4> order;
+    for (unsigned i = 0; i < op.getIVs().size(); ++i) {
+      order.emplace_back(i);
+    }
+    return order;
   }
 
-  void runOnAffineParallel(AffineParallelOp op) {}
+private:
+  unsigned cacheLine;
+};
+
+struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
+  explicit ReorderLoopsPass(unsigned cacheLine) {
+    loopOrder.setCacheLine(cacheLine);
+  }
+
+  void runOnFunction() final {
+    auto func = getFunction();
+    func.walk([&](AffineParallelOp op) {
+      if (op.getConstantRanges()) {
+        reorder(op, loopOrder.evaluate(op));
+      }
+    });
+  }
+
+  void reorder(AffineParallelOp op, ArrayRef<unsigned> argOrder) {
+    auto reductions =
+        llvm::to_vector<4>(llvm::map_range(op.reductions(), [](Attribute attr) {
+          return attr.cast<AtomicRMWKindAttr>().getValue();
+        }));
+    auto ranges = *op.getConstantRanges();
+    SmallVector<AtomicRMWKind, 4> newReductions;
+    SmallVector<int64_t, 4> newRanges;
+    for (unsigned pos : argOrder) {
+      newReductions.emplace_back(reductions[pos]);
+      newRanges.emplace_back(ranges[pos]);
+    }
+
+    OpBuilder builder(op->getParentOp());
+    auto newOp = builder.create<AffineParallelOp>(
+        op.getLoc(), op.getResultTypes(), newReductions, newRanges);
+    auto &destOps = newOp.getBody()->getOperations();
+    destOps.splice(destOps.begin(), op.getBody()->getOperations());
+    auto origArgs = op.getIVs();
+    for (auto newArg : newOp.getIVs()) {
+      auto pos = argOrder[newArg.getArgNumber()];
+      origArgs[pos].replaceAllUsesWith(newArg);
+    }
+    op.replaceAllUsesWith(newOp);
+  }
+
+private:
+  LoopOrderModel loopOrder;
 };
 
 } // namespace
 
-std::unique_ptr<Pass> createReorderLoopsPass() {
-  return std::make_unique<ReorderLoopsPass>();
+std::unique_ptr<Pass> createReorderLoopsPass(unsigned cacheLine) {
+  return std::make_unique<ReorderLoopsPass>(cacheLine);
 }
 
 } // namespace pmlc::dialect::pxa

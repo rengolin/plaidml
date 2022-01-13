@@ -42,7 +42,7 @@ createMemRefDataFlowOptPass(bool onlyParallelNested = false);
 std::unique_ptr<mlir::Pass> createNestLoopsPass();
 std::unique_ptr<mlir::Pass> createNestLoopsPass(unsigned minLoopIVs);
 
-std::unique_ptr<mlir::Pass> createReorderLoopsPass();
+std::unique_ptr<mlir::Pass> createReorderLoopsPass(unsigned cacheLine = 64);
 
 std::unique_ptr<mlir::Pass>
 createResizeTmpsPass(bool onlyParallelNested = false);
