@@ -1,5 +1,7 @@
 // Copyright 2022 Intel Corporation
 
+#include <numeric>
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -36,17 +38,54 @@ private:
 };
 
 struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
-  explicit ReorderLoopsPass(unsigned cacheLine) {
+  explicit ReorderLoopsPass(unsigned cacheLine, unsigned loopLevels)
+      : loopLevels(loopLevels) {
     loopOrder.setCacheLine(cacheLine);
+  }
+
+  void collectInnermostLoops() {
+    getFunction().walk([&](AffineParallelOp op) {
+      int hasInnerLoop = false;
+      op.walk([&](AffineParallelOp inner) { hasInnerLoop = true; });
+      if (!hasInnerLoop) {
+        loopToLevel[op.getOperation()] = 0;
+      }
+    });
+  }
+
+  void setLoopLevels() {
+    loopToLevel.clear();
+    collectInnermostLoops();
+    unsigned level = 1;
+    bool updated = true;
+    while (updated) {
+      updated = false;
+      for (auto kvp : loopToLevel) {
+        if (kvp.second != level - 1) {
+          continue;
+        }
+        auto curr = kvp.first;
+        auto parentOp = curr->getParentOp();
+        if (auto parentLoop = dyn_cast<AffineParallelOp>(parentOp)) {
+          loopToLevel[parentOp] = level;
+          updated = true;
+        }
+      }
+      ++level;
+    }
   }
 
   void runOnFunction() final {
     auto func = getFunction();
-    func.walk([&](AffineParallelOp op) {
-      if (op.getConstantRanges()) {
-        reorder(op, loopOrder.evaluate(op));
+    setLoopLevels();
+    for (unsigned i = 0; i < loopLevels; ++i) {
+      for (auto kvp : loopToLevel) {
+        if (kvp.second == i) {
+          auto loop = cast<AffineParallelOp>(kvp.first);
+          reorder(loop, loopOrder.evaluate(loop));
+        }
       }
-    });
+    }
   }
 
   void reorder(AffineParallelOp op, ArrayRef<unsigned> argOrder) {
@@ -76,13 +115,16 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
   }
 
 private:
+  unsigned loopLevels;
   LoopOrderModel loopOrder;
+  DenseMap<Operation *, int> loopToLevel;
 };
 
 } // namespace
 
-std::unique_ptr<Pass> createReorderLoopsPass(unsigned cacheLine) {
-  return std::make_unique<ReorderLoopsPass>(cacheLine);
+std::unique_ptr<Pass> createReorderLoopsPass(unsigned cacheLine,
+                                             unsigned loopLevels) {
+  return std::make_unique<ReorderLoopsPass>(cacheLine, loopLevels);
 }
 
 } // namespace pmlc::dialect::pxa

@@ -137,7 +137,10 @@ def ReorderLoops : FunctionPass<"pxa-reorder-loops"> {
   let summary = "Reorder parallel loop indexes to improve performance";
   let constructor = "pmlc::dialect::pxa::createReorderLoopsPass()";
   let options = [
-    Option<"cacheLine", "cache-line", "unsigned", /*default=*/"64", "Cache line size.">
+    Option<"cacheLine", "cache-line", "unsigned", /*default=*/"64",
+           "Cache line size.">,
+    Option<"loopLevels", "loop-levels", "unsigned", /*default=*/"1",
+           "The levels from the innermost loop to be processed.">,
   ];
 }
 
