@@ -8,6 +8,7 @@
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Support/DebugStringHelper.h"
 
+#include "pmlc/dialect/pxa/analysis/memref_access.h"
 #include "pmlc/dialect/pxa/analysis/strides.h"
 #include "pmlc/dialect/pxa/analysis/uses.h"
 #include "pmlc/dialect/pxa/ir/ops.h"
@@ -21,16 +22,69 @@ namespace pmlc::dialect::pxa {
 
 namespace {
 
+struct MemRefAccessCounter {
+  explicit MemRefAccessCounter(Operation *op) : count(1), access(op) {
+    if (auto read = dyn_cast<PxaReadOpInterface>(op)) {
+      shape = read.getMemRef().getType().cast<MemRefType>().getShape();
+    } else if (auto reduce = dyn_cast<PxaReduceOpInterface>(op)) {
+      shape = reduce.getMemRef().getType().cast<MemRefType>().getShape();
+    } else {
+      op->emitError("Invalid operation for MemRefAccessCounter.");
+    }
+  }
+
+  bool operator==(const MemRefAccessCounter &rhs) {
+    return rhs.shape == shape && rhs.access == access;
+  }
+
+  int64_t size() {
+    return count * std::accumulate(shape.begin(), shape.end(), 1,
+                                   std::multiplies<int64_t>());
+  }
+
+  SmallVector<unsigned, 4> getBestOrder() {
+    SmallVector<unsigned, 4> order;
+    return order;
+  }
+
+  MemRefAccess access;
+  ArrayRef<int64_t> shape;
+  unsigned count;
+};
+
 class LoopOrderModel final {
 public:
   void setCacheLine(unsigned size) { cacheLine = size; }
 
   SmallVector<unsigned, 4> evaluate(AffineParallelOp op) {
-    SmallVector<unsigned, 4> order;
-    for (unsigned i = 0; i < op.getIVs().size(); ++i) {
-      order.emplace_back(i);
+    // Collect the memref access patterns
+    SmallVector<MemRefAccessCounter, 4> memrefs;
+    op.walk([&](Operation *op) {
+      MemRefAccessCounter newAccess(op);
+      auto iter = std::find(memrefs.begin(), memrefs.end(), newAccess);
+      if (iter == memrefs.end()) {
+        memrefs.emplace_back(newAccess);
+      } else {
+        ++iter->count;
+      }
+    });
+
+    if (memrefs.empty()) {
+      return {};
     }
-    return order;
+
+    // Find out the largest memref access pattern
+    unsigned largestIdx = 0;
+    int64_t largestSize = memrefs[0].size();
+    for (unsigned i = 1; i < memrefs.size(); ++i) {
+      int64_t iSize = memrefs[i].size();
+      if (iSize > largestSize) {
+        largestSize = iSize;
+        largestIdx = i;
+      }
+    }
+
+    return memrefs[largestIdx].getBestOrder();
   }
 
 private:

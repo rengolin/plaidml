@@ -20,6 +20,14 @@ struct MemRefAccess {
     getAccessMap(op.getAffineMap(), op.getMapOperands(), &accessMap);
   }
 
+  explicit MemRefAccess(mlir::Operation *op) {
+    if (auto read = mlir::dyn_cast<PxaReadOpInterface>(op)) {
+      getAccessMap(read.getAffineMap(), read.getMapOperands(), &accessMap);
+    } else if (auto reduce = mlir::dyn_cast<PxaReduceOpInterface>(op)) {
+      getAccessMap(reduce.getAffineMap(), reduce.getMapOperands(), &accessMap);
+    }
+  }
+
   void getAccessMap(mlir::AffineMap map,
                     mlir::SmallVector<mlir::Value, 8> operands,
                     mlir::AffineValueMap *accessMap);
