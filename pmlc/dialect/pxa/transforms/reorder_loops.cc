@@ -95,6 +95,9 @@ public:
     // Collect the memref access patterns
     SmallVector<MemRefAccessCounter, 4> memrefs;
     loop.walk([&](Operation *op) {
+      if (!isa<PxaReadOpInterface>(op) && !isa<PxaReduceOpInterface>(op)) {
+        return;
+      }
       MemRefAccessCounter newAccess(op, loop.getIVs());
       auto iter = std::find(memrefs.begin(), memrefs.end(), newAccess);
       if (iter == memrefs.end()) {
@@ -135,7 +138,11 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
   void collectInnermostLoops() {
     getFunction().walk([&](AffineParallelOp op) {
       int hasInnerLoop = false;
-      op.walk([&](AffineParallelOp inner) { hasInnerLoop = true; });
+      op.walk([&](AffineParallelOp inner) {
+        if (inner != op) {
+          hasInnerLoop = true;
+        }
+      });
       if (!hasInnerLoop) {
         loopToLevel[op.getOperation()] = 0;
       }
