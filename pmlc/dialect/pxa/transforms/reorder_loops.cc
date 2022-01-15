@@ -23,32 +23,67 @@ namespace pmlc::dialect::pxa {
 namespace {
 
 struct MemRefAccessCounter {
-  explicit MemRefAccessCounter(Operation *op) : count(1), access(op) {
+  explicit MemRefAccessCounter(Operation *op, ArrayRef<BlockArgument> args)
+      : access(op), count(1) {
     if (auto read = dyn_cast<PxaReadOpInterface>(op)) {
-      shape = read.getMemRef().getType().cast<MemRefType>().getShape();
+      type = read.getMemRef().getType().cast<MemRefType>();
     } else if (auto reduce = dyn_cast<PxaReduceOpInterface>(op)) {
-      shape = reduce.getMemRef().getType().cast<MemRefType>().getShape();
+      type = reduce.getMemRef().getType().cast<MemRefType>();
     } else {
       op->emitError("Invalid operation for MemRefAccessCounter.");
+    }
+    for (unsigned i = 0; i < args.size(); ++i) {
+      argIdxs[args[i]] = i;
     }
   }
 
   bool operator==(const MemRefAccessCounter &rhs) {
-    return rhs.shape == shape && rhs.access == access;
+    return rhs.type == type && rhs.access == access;
   }
 
   int64_t size() {
+    auto shape = type.getShape();
     return count * std::accumulate(shape.begin(), shape.end(), 1,
                                    std::multiplies<int64_t>());
   }
 
   SmallVector<unsigned, 4> getBestOrder() {
+    SmallVector<StrideInfo> strideInfo;
+    auto si = computeStrideInfo(type, access.accessMap.getAffineMap(),
+                                access.accessMap.getOperands());
+    if (!si) {
+      return {};
+    }
+    SmallVector<std::pair<BlockArgument, int64_t>> strides;
+    for (auto kvp : si->strides) {
+      if (argIdxs.find(kvp.first) != argIdxs.end()) {
+        strides.emplace_back(kvp.first, kvp.second);
+      }
+    }
+    std::sort(strides.begin(), strides.end(),
+              [](const std::pair<BlockArgument, int64_t> &s0,
+                 const std::pair<BlockArgument, int64_t> &s1) {
+                return s0.second < s1.second;
+              });
     SmallVector<unsigned, 4> order;
+    DenseSet<BlockArgument> existed;
+    for (unsigned i = 0; i < strides.size(); ++i) {
+      BlockArgument arg = strides[i].first;
+      order.emplace_back(argIdxs[arg]);
+      existed.insert(arg);
+    }
+    for (auto kvp : argIdxs) {
+      if (existed.find(kvp.first) == existed.end()) {
+        order.emplace_back(kvp.second);
+      }
+    }
+    std::reverse(order.begin(), order.end());
     return order;
   }
 
   MemRefAccess access;
-  ArrayRef<int64_t> shape;
+  DenseMap<BlockArgument, unsigned> argIdxs;
+  MemRefType type;
   unsigned count;
 };
 
@@ -56,11 +91,11 @@ class LoopOrderModel final {
 public:
   void setCacheLine(unsigned size) { cacheLine = size; }
 
-  SmallVector<unsigned, 4> evaluate(AffineParallelOp op) {
+  SmallVector<unsigned, 4> evaluate(AffineParallelOp loop) {
     // Collect the memref access patterns
     SmallVector<MemRefAccessCounter, 4> memrefs;
-    op.walk([&](Operation *op) {
-      MemRefAccessCounter newAccess(op);
+    loop.walk([&](Operation *op) {
+      MemRefAccessCounter newAccess(op, loop.getIVs());
       auto iter = std::find(memrefs.begin(), memrefs.end(), newAccess);
       if (iter == memrefs.end()) {
         memrefs.emplace_back(newAccess);
