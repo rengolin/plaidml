@@ -178,7 +178,10 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
       for (auto kvp : loopToLevel) {
         if (kvp.second == i) {
           auto loop = cast<AffineParallelOp>(kvp.first);
-          reorder(loop, loopOrder.evaluate(loop));
+          auto order = loopOrder.evaluate(loop);
+          if (!order.empty()) {
+            reorder(loop, order);
+          }
         }
       }
     }
@@ -199,6 +202,7 @@ struct ReorderLoopsPass : public ReorderLoopsBase<ReorderLoopsPass> {
     builder.setInsertionPoint(op);
     auto newOp = builder.create<AffineParallelOp>(
         op.getLoc(), op.getResultTypes(), reductions, newRanges);
+    newOp->setAttrs(op->getAttrs());
     auto &destOps = newOp.getBody()->getOperations();
     destOps.splice(destOps.begin(), op.getBody()->getOperations());
     auto origArgs = op.getIVs();
