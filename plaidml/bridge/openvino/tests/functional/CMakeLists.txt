@@ -10,7 +10,7 @@ addIeTargetTest(
   NAME ${_TARGET}
   ROOT ${CMAKE_CURRENT_SOURCE_DIR}
   DEPENDENCIES plaidmlPlugin
-  LINK_LIBRARIES IE::funcSharedTests
+  LINK_LIBRARIES funcSharedTests
   ADD_CPPLINT
   LABELS ${_LABEL} test
 )
@@ -20,7 +20,7 @@ addIeTargetTest(
   ROOT ${CMAKE_CURRENT_SOURCE_DIR}
   DEPENDENCIES plaidmlPlugin
   DEFINES SMOKE_TESTS_ONLY
-  LINK_LIBRARIES IE::funcSharedTests
+  LINK_LIBRARIES funcSharedTests
   ADD_CPPLINT
   LABELS ${_LABEL} smoke
 )

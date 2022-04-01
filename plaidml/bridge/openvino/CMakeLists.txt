@@ -29,9 +29,9 @@ pml_cc_library(
 )
 
 add_subdirectory(plugin)
-#if(PML_BUILD_TESTS)
-#  add_subdirectory(tests/functional)
-#endif()
+if(PML_BUILD_TESTS)
+  add_subdirectory(tests/functional)
+endif()
 
 install(
   DIRECTORY ${OpenVINO_MAIN_SOURCE_DIR}/${BIN_FOLDER}/
