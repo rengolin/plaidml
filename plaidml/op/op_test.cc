@@ -429,12 +429,12 @@ TEST_F(OpTest, HardSigmoid) {
   runProgram(program);
 }
 
-TEST_F(OpTest, ImageResize) {
-  auto I = Placeholder(DType::FLOAT32, {1, 224, 224, 3}, "I");
-  auto O = op::image_resize(I, {5, 4}, op::InterpolationMode::BILINEAR, op::TensorLayout::NXC);
-  auto program = makeProgram("image_resize", {I}, {O});
-  runProgram(program);
-}
+// TEST_F(OpTest, ImageResize) {
+//   auto I = Placeholder(DType::FLOAT32, {1, 224, 224, 3}, "I");
+//   auto O = op::image_resize(I, {5, 4}, op::InterpolationMode::BILINEAR, op::TensorLayout::NXC);
+//   auto program = makeProgram("image_resize", {I}, {O});
+//   runProgram(program);
+// }
 
 TEST_F(OpTest, Max) {
   auto I = Placeholder(DType::FLOAT32, {1, 224, 224, 3}, "I");
